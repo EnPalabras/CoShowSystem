@@ -1,0 +1,32 @@
+name: Update Status
+
+env:
+  AUTH_TIENDANUBE: ${{ secrets.AUTH_TIENDANUBE }}
+  GOOGLE_SPREADSHEET_ID: ${{ secrets.GOOGLE_SPREADSHEET_ID }}
+  GOOGLE_PRIVATE_KEY: ${{ secrets.GOOGLE_PRIVATE_KEY }}
+  GOOGLE_SERVICE_ACCOUNT_EMAIL: ${{ secrets.GOOGLE_SERVICE_ACCOUNT_EMAIL }}
+
+on:
+  workflow_dispatch:
+
+  repository_dispatch:
+    types:
+      - webhook
+  schedule:
+    - cron: '30 12 * * *'
+    - cron: '30 18 * * *'
+    - cron: '30 22 * * *'
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - run: |
+          npm install
+          npm start
