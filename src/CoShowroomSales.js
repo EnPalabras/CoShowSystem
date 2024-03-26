@@ -8,6 +8,7 @@ const COSHOWROOM_PASSWORD = process.env.COSHOWROOM_PASSWORD
 const AUTH_TIENDANUBE = process.env.AUTH_TIENDANUBE
 
 export const loginCo = async () => {
+  console.log(COSHOWROOM_LOGINURL, COSHOWROOM_EMAIL, COSHOWROOM_PASSWORD)
   const response = await fetch(COSHOWROOM_LOGINURL, {
     method: 'POST',
     headers: {
