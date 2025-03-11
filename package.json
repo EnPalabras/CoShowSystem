@@ -1,22 +1,16 @@
 {
-  "name": "coshowroomauto",
+  "name": "coshowroom-sync",
   "version": "1.0.0",
-  "description": "",
-  "main": "index.js",
   "type": "module",
+  "description": "Sincronización de órdenes entre CoShowroom y Tienda Nube",
+  "main": "index.js",
   "scripts": {
-    "build": "webpack",
-    "start": "node .",
-    "dev": "nodemon ."
+    "start": "node index.js"
   },
   "keywords": [],
   "author": "",
   "license": "ISC",
   "dependencies": {
-    "dotenv": "^16.3.1",
-    "express": "^4.18.2",
-    "webpack": "^5.89.0",
-    "webpack-cli": "^5.1.4",
-    "webpack-node-externals": "^3.0.0"
+    "dotenv": "^16.4.7"
   }
 }
