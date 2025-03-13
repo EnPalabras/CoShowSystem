@@ -127,8 +127,8 @@ const processOrder = async (order, token, shippedOrders) => {
     const [orderData] = await response.json()
     if (!orderData) return
 
-    // Si la orden ya está marcada como enviada en Tienda Nube, la agregamos al caché
-    if (orderData.shipping_status === 'shipped') {
+    // Si la orden ya está marcada como enviada en Tienda Nube o está pagada, la agregamos al caché
+    if (orderData.shipping_status === 'shipped' || orderData.payment_status === 'paid') {
       await addToShippedOrders(externalCode)
       return
     }
@@ -149,6 +149,7 @@ const processOrder = async (order, token, shippedOrders) => {
         await addToShippedOrders(externalCode)
       } else if (orderData.next_action === 'waiting_manual_confirmation') {
         await markAsPaid(orderData.id, orderData.total, new Date().toISOString())
+        await addToShippedOrders(externalCode)
       }
     }
   } catch (error) {
