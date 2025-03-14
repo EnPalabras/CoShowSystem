@@ -128,7 +128,7 @@ const processOrder = async (order, token, shippedOrders) => {
     if (!orderData) return
 
     // Si la orden ya está marcada como enviada en Tienda Nube o está pagada, la agregamos al caché
-    if (orderData.shipping_status === 'shipped' || orderData.payment_status === 'paid') {
+    if (orderData.shipping_status === 'shipped' && orderData.payment_status === 'paid') {
       await addToShippedOrders(externalCode)
       return
     }
