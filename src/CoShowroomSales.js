@@ -66,7 +66,7 @@ const processOrder = async (order, token) => {
     console.log(orderData.number, orderData.shipping_status, orderData.payment_status, statusName)
 
     // Si la orden ya está marcada como enviada en Tienda Nube y está pagada, la salteamos
-    if (orderData.shipping_status === 'shipped' && orderData.payment_status === 'paid') {  
+    if ((orderData.shipping_status === 'shipped' || orderData.shipping_status === 'delivered') && orderData.payment_status === 'paid') {  
       return 
     }
 
@@ -86,7 +86,7 @@ const processOrder = async (order, token) => {
         log(`Orden ${externalCode} marcada como entregada`, 'info')
       }
       
-      if ((orderData.shipping_status === 'unpacked' || orderData.shipping_status === 'unshipped') && orderData.payment_status === 'pending') {
+      if ((orderData.shipping_status === 'unpacked' || orderData.shipping_status === 'unshipped' || orderData.shipping_status === 'delivered') && orderData.payment_status === 'pending') {
         await markAsPaid(orderData.id, orderData.total, new Date().toISOString())
         log(`Orden ${externalCode} marcada como pagada`, 'info')
       }
