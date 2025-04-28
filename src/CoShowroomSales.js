@@ -86,7 +86,7 @@ const processOrder = async (order, token) => {
         log(`Orden ${externalCode} marcada como entregada`, 'info')
       }
       
-      if ((orderData.shipping_status === 'unpacked' || orderData.shipping_status === 'unshipped' || orderData.shipping_status === 'delivered') && orderData.payment_status === 'pending') {
+      if ((orderData.shipping_status === 'unpacked' || orderData.shipping_status === 'unshipped' || (orderData.shipping_status === 'delivered' || orderData.shipping_status === 'shipped')) && orderData.payment_status === 'pending') {
         await markAsPaid(orderData.id, orderData.total, new Date().toISOString())
         log(`Orden ${externalCode} marcada como pagada`, 'info')
       }
