@@ -8,7 +8,6 @@ const COSHOWROOM_LOGINURL = process.env.COSHOWROOM_LOGINURL
 const COSHOWROOM_EMAIL = process.env.COSHOWROOM_EMAIL
 const COSHOWROOM_PASSWORD = process.env.COSHOWROOM_PASSWORD
 const AUTH_TIENDANUBE = process.env.AUTH_TIENDANUBE
-const SHIPPED_ORDERS_CACHE = process.env.CACHE_FILE_PATH || 'shipped_orders_cache.json'
 
 const log = (message, type = 'info') => {
   const timestamp = new Date().toISOString()
@@ -41,77 +40,10 @@ export const loginCo = async () => {
   }
 }
 
-const getShippedOrders = async () => {
-  try {
-    // Intentar leer el archivo existente
-    const data = await fs.readFile(SHIPPED_ORDERS_CACHE, 'utf-8')
-    try {
-      const orders = new Set(JSON.parse(data).shippedOrders)
-      log(`Caché cargado: ${orders.size} órdenes procesadas`)
-      return orders
-    } catch (parseError) {
-      log(`Error al parsear el caché, intentando recuperar backup: ${parseError.message}`, 'warn')
-      // Si hay error al parsear, intentar leer el backup
-      const backupData = await fs.readFile(`${SHIPPED_ORDERS_CACHE}.backup`, 'utf-8')
-      const orders = new Set(JSON.parse(backupData).shippedOrders)
-      log(`Caché recuperado desde backup: ${orders.size} órdenes`, 'info')
-      return orders
-    }
-  } catch (error) {
-    // Si no existe el archivo o hay error al leerlo
-    log('No se encontró archivo de caché existente, verificando backup', 'warn')
-    try {
-      const backupData = await fs.readFile(`${SHIPPED_ORDERS_CACHE}.backup`, 'utf-8')
-      const orders = new Set(JSON.parse(backupData).shippedOrders)
-      log(`Caché recuperado desde backup: ${orders.size} órdenes`, 'info')
-      // Restaurar el backup como archivo principal
-      await fs.writeFile(SHIPPED_ORDERS_CACHE, backupData)
-      return orders
-    } catch (backupError) {
-      log('Creando nuevo archivo de caché', 'info')
-      const emptyCache = JSON.stringify({ shippedOrders: [] })
-      await fs.writeFile(SHIPPED_ORDERS_CACHE, emptyCache)
-      await fs.writeFile(`${SHIPPED_ORDERS_CACHE}.backup`, emptyCache)
-      return new Set()
-    }
-  }
-}
-
-const addToShippedOrders = async (orderId) => {
-  try {
-    const shippedOrders = await getShippedOrders()
-    if (!shippedOrders.has(orderId)) {
-      shippedOrders.add(orderId)
-      const cacheData = JSON.stringify({ 
-        shippedOrders: Array.from(shippedOrders),
-        lastUpdate: new Date().toISOString()
-      }, null, 2)
-
-      // Primero crear el backup
-      await fs.writeFile(`${SHIPPED_ORDERS_CACHE}.backup`, cacheData)
-      // Luego actualizar el archivo principal
-      await fs.writeFile(SHIPPED_ORDERS_CACHE, cacheData)
-      
-      log(`Orden ${orderId} agregada al caché (total: ${shippedOrders.size})`)
-    }
-  } catch (error) {
-    log(`Error al actualizar caché de órdenes enviadas: ${error.message}`, 'error')
-    throw error // Propagar el error para mejor tracking
-  }
-}
-
-const processOrder = async (order, token, shippedOrders) => {
+const processOrder = async (order, token) => {
   const { clientName, statusName, externalCode, store } = order
   
   try {
-    // Si la orden ya fue marcada como enviada, la saltamos
-   
-   /*
-    if (shippedOrders.has(externalCode)) {
-      return
-    }
-      */
-
     const URL = `https://api.tiendanube.com/v1/1705915/orders?q=${externalCode.replace(' ', '')}`
     const response = await fetch(URL, {
       method: 'GET',
@@ -131,30 +63,33 @@ const processOrder = async (order, token, shippedOrders) => {
     if (!orderData) return
     if (orderData.status === "cancelled") return
 
-    // Si la orden ya está marcada como enviada en Tienda Nube y está pagada, la agregamos al caché
-    if (orderData.shipping_status === 'shipped' && orderData.payment_status === 'paid') {
-      await addToShippedOrders(externalCode)
-      return
-    }
     console.log(orderData.number, orderData.shipping_status, orderData.payment_status, statusName)
+
+    // Si la orden ya está marcada como enviada en Tienda Nube y está pagada, la salteamos
+    if (orderData.shipping_status === 'shipped' && orderData.payment_status === 'paid') {  
+      return 
+    }
 
     if (statusName === 'En Depósito' && orderData.shipping_status === 'unpacked') {
       await markAsPacked(orderData.id)
+      log(`Orden ${externalCode} marcada como empaquetada`, 'info')
     }
 
     if (statusName === 'Entregado') {
       if (orderData.shipping_status === 'unpacked') {
         await markAsPacked(orderData.id)
         await markAsDelivered(orderData.id)
+        log(`Orden ${externalCode} marcada como empaquetada y entregada`, 'info')
       }
       if (orderData.shipping_status === 'unshipped') {
         await markAsDelivered(orderData.id)
+        log(`Orden ${externalCode} marcada como entregada`, 'info')
       }
       
       if ((orderData.shipping_status === 'unpacked' || orderData.shipping_status === 'unshipped') && orderData.payment_status === 'pending') {
         await markAsPaid(orderData.id, orderData.total, new Date().toISOString())
+        log(`Orden ${externalCode} marcada como pagada`, 'info')
       }
-      await addToShippedOrders(externalCode)
     }
   } catch (error) {
     console.error(`Error procesando orden ${externalCode}:`, error)
@@ -187,7 +122,6 @@ export const salesCo = async (token) => {
     }
 
     const data = await response.json()
-    const shippedOrders = await getShippedOrders()
     
     log(`Total de órdenes obtenidas: ${data.externalOrder.length}`)
     
@@ -200,7 +134,7 @@ export const salesCo = async (token) => {
     log(`Procesando órdenes en ${chunks.length} grupos`)
     
     for (const chunk of chunks) {
-      await Promise.all(chunk.map(order => processOrder(order, token, shippedOrders)))
+      await Promise.all(chunk.map(order => processOrder(order, token)))
     }
 
     log('Proceso completado exitosamente')

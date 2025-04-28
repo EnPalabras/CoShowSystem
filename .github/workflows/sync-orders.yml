@@ -17,36 +17,6 @@ jobs:
         with:
           node-version: '18'
 
-      - name: Cache shipped orders
-        uses: actions/cache@v3
-        with:
-          path: |
-            shipped_orders_cache.json
-            shipped_orders_cache.json.backup
-          key: ${{ runner.os }}-shipped-orders-${{ github.run_number }}
-          restore-keys: |
-            ${{ runner.os }}-shipped-orders-
-
-      - name: Verify cache files
-        run: |
-          if [ -f shipped_orders_cache.json ]; then
-            echo "Cache file exists"
-            if ! jq . shipped_orders_cache.json > /dev/null 2>&1; then
-              echo "Cache file is corrupted, attempting to restore from backup"
-              if [ -f shipped_orders_cache.json.backup ] && jq . shipped_orders_cache.json.backup > /dev/null 2>&1; then
-                cp shipped_orders_cache.json.backup shipped_orders_cache.json
-              else
-                echo "Creating new cache file"
-                echo '{"shippedOrders":[]}' > shipped_orders_cache.json
-                cp shipped_orders_cache.json shipped_orders_cache.json.backup
-              fi
-            fi
-          else
-            echo "Creating new cache file"
-            echo '{"shippedOrders":[]}' > shipped_orders_cache.json
-            cp shipped_orders_cache.json shipped_orders_cache.json.backup
-          fi
-
       - name: Install dependencies
         run: npm install
 
@@ -56,5 +26,4 @@ jobs:
           COSHOWROOM_EMAIL: ${{ secrets.COSHOWROOM_EMAIL }}
           COSHOWROOM_PASSWORD: ${{ secrets.COSHOWROOM_PASSWORD }}
           AUTH_TIENDANUBE: ${{ secrets.AUTH_TIENDANUBE }}
-          CACHE_FILE_PATH: shipped_orders_cache.json
-        run: node index.js 
+        run: node index.js
