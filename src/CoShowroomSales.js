@@ -127,30 +127,30 @@ const processOrder = async (order, token, shippedOrders) => {
     const [orderData] = await response.json()
     if (!orderData) return
 
-    // Si la orden ya está marcada como enviada en Tienda Nube o está pagada, la agregamos al caché
+    // Si la orden ya está marcada como enviada en Tienda Nube y está pagada, la agregamos al caché
     if (orderData.shipping_status === 'shipped' && orderData.payment_status === 'paid') {
       await addToShippedOrders(externalCode)
       return
     }
+    console.log(orderData.number, orderData.shipping_status, orderData.payment_status, statusName)
 
-    console.log(orderData.number, orderData.next_action, statusName)
-
-    if (statusName === 'En Depósito' && orderData.next_action === 'waiting_packing') {
+    if (statusName === 'En Depósito' && orderData.shipping_status === 'unpacked') {
       await markAsPacked(orderData.id)
     }
 
     if (statusName === 'Entregado') {
-      if (orderData.next_action === 'waiting_packing') {
+      if (orderData.shipping_status === 'unpacked') {
         await markAsPacked(orderData.id)
         await markAsDelivered(orderData.id)
-        await addToShippedOrders(externalCode)
-      } else if (orderData.next_action === 'waiting_client_pickup') {
-        await markAsDelivered(orderData.id)
-        await addToShippedOrders(externalCode)
-      } else if (orderData.next_action === 'waiting_manual_confirmation') {
-        await markAsPaid(orderData.id, orderData.total, new Date().toISOString())
-        await addToShippedOrders(externalCode)
       }
+      if (orderData.shipping_status === 'unshipped') {
+        await markAsDelivered(orderData.id)
+      }
+      
+      if ((orderData.shipping_status === 'unpacked' || orderData.shipping_status === 'unshipped') && orderData.payment_status === 'pending') {
+        await markAsPaid(orderData.id, orderData.total, new Date().toISOString())
+      }
+      await addToShippedOrders(externalCode)
     }
   } catch (error) {
     console.error(`Error procesando orden ${externalCode}:`, error)
