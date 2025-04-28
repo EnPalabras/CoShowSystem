@@ -105,9 +105,12 @@ const processOrder = async (order, token, shippedOrders) => {
   
   try {
     // Si la orden ya fue marcada como enviada, la saltamos
+   
+   /*
     if (shippedOrders.has(externalCode)) {
       return
     }
+      */
 
     const URL = `https://api.tiendanube.com/v1/1705915/orders?q=${externalCode.replace(' ', '')}`
     const response = await fetch(URL, {
