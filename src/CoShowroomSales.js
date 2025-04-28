@@ -126,6 +126,7 @@ const processOrder = async (order, token, shippedOrders) => {
 
     const [orderData] = await response.json()
     if (!orderData) return
+    if (orderData.status === "cancelled") return
 
     // Si la orden ya está marcada como enviada en Tienda Nube y está pagada, la agregamos al caché
     if (orderData.shipping_status === 'shipped' && orderData.payment_status === 'paid') {
