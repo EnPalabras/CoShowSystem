@@ -101,13 +101,17 @@ export const salesCo = async (token) => {
     const today = new Date()
     const oneYearAgo = new Date(today)
     oneYearAgo.setFullYear(today.getFullYear() - 1)
+    const twoYearsAgo = new Date(today)
+    twoYearsAgo.setFullYear(today.getFullYear() - 2)
     
+
     const formattedToday = `${String(today.getMonth() + 1).padStart(2, '0')}/${String(today.getDate()).padStart(2, '0')}/${today.getFullYear()}`
     const formattedOneYearAgo = `${String(oneYearAgo.getMonth() + 1).padStart(2, '0')}/${String(oneYearAgo.getDate()).padStart(2, '0')}/${oneYearAgo.getFullYear()}`
-    
+    // const formattedTwoYearsAgo = `${String(twoYearsAgo.getMonth() + 1).padStart(2, '0')}/${String(twoYearsAgo.getDate()).padStart(2, '0')}/${twoYearsAgo.getFullYear()}`
+
     log(`Consultando órdenes desde ${formattedOneYearAgo} hasta ${formattedToday}`)
     
-    const URL = `https://api.copagopos.com/externalOrder/2000/0?from=${formattedOneYearAgo}&to=${formattedToday}`
+    const URL = `https://api.copagopos.com/externalOrder/10000/0?from=${formattedOneYearAgo}&to=${formattedToday}`
 
     const response = await fetch(URL, {
       method: 'GET',
@@ -126,9 +130,9 @@ export const salesCo = async (token) => {
     log(`Total de órdenes obtenidas: ${data.externalOrder.length}`)
     
     const chunks = []
-    const chunkSize = 5
+    const chunkSize = 10
     for (let i = 0; i < data.externalOrder.length; i += chunkSize) {
-      chunks.push(data.externalOrder.slice(i, i + chunkSize))
+      chunks.unshift(data.externalOrder.slice(i, i + chunkSize))
     }
 
     log(`Procesando órdenes en ${chunks.length} grupos`)
