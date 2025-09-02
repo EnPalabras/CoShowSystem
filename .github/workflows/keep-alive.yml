@@ -4,6 +4,9 @@ on:
     - cron: '0 0 1,15 * *'  # Días 1 y 15 de cada mes
   workflow_dispatch:
 
+permissions:
+  contents: write  # ← ESTO ES LO QUE FALTABA
+
 jobs:
   keep-alive:
     runs-on: ubuntu-latest
