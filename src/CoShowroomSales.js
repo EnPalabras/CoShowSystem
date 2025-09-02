@@ -111,7 +111,9 @@ export const salesCo = async (token) => {
 
     log(`Consultando órdenes desde ${formattedOneYearAgo} hasta ${formattedToday}`)
     
-    const URL = `https://api.copagopos.com/externalOrder/10000/0?from=${formattedOneYearAgo}&to=${formattedToday}`
+
+    // Debería actualizar diariamente lo de los últimos 2 o 3 meses, pero sumar también actualizaciones de los últimos años cada un período más largo
+    const URL = `https://api.copagopos.com/externalOrder/5000/0?from=${formattedOneYearAgo}&to=${formattedToday}`
 
     const response = await fetch(URL, {
       method: 'GET',
