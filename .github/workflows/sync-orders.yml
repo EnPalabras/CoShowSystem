@@ -1,8 +1,8 @@
 name: Sync Orders
 
 on:
-  schedule:
-    - cron: '*/59 * * * *'  # Ejecutar cada 59 minutos
+  #schedule:
+    #- cron: '*/59 * * * *'  # Ejecutar cada 59 minutos
   workflow_dispatch:  # Permite ejecutar manualmente
 
 jobs:
