@@ -44,6 +44,12 @@ const processOrder = async (order, token) => {
   const { clientName, statusName, externalCode, store } = order
   
   try {
+    // Validar que externalCode no esté vacío
+    if (!externalCode || externalCode.trim() === '') {
+      console.log(`Orden sin externalCode - Cliente: ${clientName}, Status: ${statusName}`)
+      return
+    }
+
     const URL = `https://api.tiendanube.com/v1/1705915/orders?q=${externalCode.replace(' ', '')}`
     const response = await fetch(URL, {
       method: 'GET',
@@ -59,9 +65,25 @@ const processOrder = async (order, token) => {
       return
     }
 
-    const [orderData] = await response.json()
-    if (!orderData) return
+    const orders = await response.json()
+    
+    // Buscar específicamente la orden que coincida con el number
+    const orderData = orders.find(order => 
+      order.number.toString() === externalCode.toString()
+    )
+
+    if (!orderData) {
+      console.log(`No se encontró orden en TN con number = ${externalCode}`)
+      return
+    }
+
     if (orderData.status === "cancelled") return
+
+    // NUEVA VALIDACIÓN: Solo procesar si es pickup-point
+    if (orderData.shipping !== 'pickup-point') {
+      console.log(`Orden ${externalCode} no es pickup-point (es ${orderData.shipping}), salteando procesamiento`)
+      return
+    }
 
     console.log(orderData.number, orderData.shipping_status, orderData.payment_status, statusName)
 
