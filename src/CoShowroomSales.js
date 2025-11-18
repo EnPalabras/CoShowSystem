@@ -40,7 +40,7 @@ export const loginCo = async () => {
   }
 }
 
-const processOrder = async (order, token) => {
+const processOrder = async (order, token, updatedOrders) => {
   const { clientName, statusName, externalCode, store } = order
   
   try {
@@ -92,27 +92,41 @@ const processOrder = async (order, token) => {
       return 
     }
 
+    // Array para trackear las acciones de esta orden
+    const orderActions = []
+
     if (statusName === 'En Depósito' && orderData.shipping_status === 'unpacked') {
       await markAsPacked(orderData.id)
-      log(`Orden ${externalCode} marcada como empaquetada`, 'info')
+      orderActions.push('empaquetada')
     }
 
     if (statusName === 'Entregado') {
       if (orderData.shipping_status === 'unpacked') {
         await markAsPacked(orderData.id)
         await markAsDelivered(orderData.id)
-        log(`Orden ${externalCode} marcada como empaquetada y entregada`, 'info')
+        orderActions.push('empaquetada y entregada')
       }
-      if (orderData.shipping_status === 'unshipped') {
+      else if (orderData.shipping_status === 'unshipped') {
         await markAsDelivered(orderData.id)
-        log(`Orden ${externalCode} marcada como entregada`, 'info')
+        orderActions.push('entregada')
       }
       
       if ((orderData.shipping_status === 'unpacked' || orderData.shipping_status === 'unshipped' || (orderData.shipping_status === 'delivered' || orderData.shipping_status === 'shipped')) && orderData.payment_status === 'pending') {
         await markAsPaid(orderData.id, orderData.total, new Date().toISOString())
-        log(`Orden ${externalCode} marcada como pagada`, 'info')
+        orderActions.push('pagada')
       }
     }
+
+    // Si se realizaron acciones, guardar en el array
+    if (orderActions.length > 0) {
+      updatedOrders.push({
+        number: externalCode,
+        client: clientName,
+        actions: orderActions.join(', '),
+        coStatus: statusName
+      })
+    }
+
   } catch (error) {
     console.error(`Error procesando orden ${externalCode}:`, error)
   }
@@ -129,12 +143,9 @@ export const salesCo = async (token) => {
 
     const formattedToday = `${String(today.getMonth() + 1).padStart(2, '0')}/${String(today.getDate()).padStart(2, '0')}/${today.getFullYear()}`
     const formattedOneYearAgo = `${String(oneYearAgo.getMonth() + 1).padStart(2, '0')}/${String(oneYearAgo.getDate()).padStart(2, '0')}/${oneYearAgo.getFullYear()}`
-    // const formattedTwoYearsAgo = `${String(twoYearsAgo.getMonth() + 1).padStart(2, '0')}/${String(twoYearsAgo.getDate()).padStart(2, '0')}/${twoYearsAgo.getFullYear()}`
 
     log(`Consultando órdenes desde ${formattedOneYearAgo} hasta ${formattedToday}`)
     
-
-    // Debería actualizar diariamente lo de los últimos 2 o 3 meses, pero sumar también actualizaciones de los últimos años cada un período más largo
     const URL = `https://api.copagopos.com/externalOrder/5000/0?from=${formattedOneYearAgo}&to=${formattedToday}`
 
     const response = await fetch(URL, {
@@ -153,6 +164,9 @@ export const salesCo = async (token) => {
     
     log(`Total de órdenes obtenidas: ${data.externalOrder.length}`)
     
+    // Array para guardar las órdenes actualizadas
+    const updatedOrders = []
+    
     const chunks = []
     const chunkSize = 10
     for (let i = 0; i < data.externalOrder.length; i += chunkSize) {
@@ -162,11 +176,33 @@ export const salesCo = async (token) => {
     log(`Procesando órdenes en ${chunks.length} grupos`)
     
     for (const chunk of chunks) {
-      await Promise.all(chunk.map(order => processOrder(order, token)))
+      await Promise.all(chunk.map(order => processOrder(order, token, updatedOrders)))
     }
 
+    // Mostrar resumen de órdenes actualizadas
+    log('==========================================')
+    log('RESUMEN DE ÓRDENES ACTUALIZADAS')
+    log('==========================================')
+    
+    if (updatedOrders.length > 0) {
+      log(`Total de órdenes actualizadas: ${updatedOrders.length}`)
+      console.log('\nDetalle de actualizaciones:')
+      updatedOrders.forEach((order, index) => {
+        console.log(`${index + 1}. Orden #${order.number} - ${order.client}`)
+        console.log(`   Estado CoShowroom: ${order.coStatus}`)
+        console.log(`   Acciones: ${order.actions}`)
+      })
+    } else {
+      log('No se realizaron actualizaciones de órdenes')
+    }
+    
+    log('==========================================')
     log('Proceso completado exitosamente')
-    return data
+    
+    return {
+      ...data,
+      updatedOrders
+    }
   } catch (error) {
     log(`Error en proceso principal: ${error.message}`, 'error')
     throw error
