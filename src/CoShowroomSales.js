@@ -50,7 +50,11 @@ const processOrder = async (order, token, updatedOrders) => {
       return
     }
 
-    const URL = `https://api.tiendanube.com/v1/1705915/orders?q=${externalCode.replace(' ', '')}`
+    // replace(' ', '') sacaba solo el PRIMER espacio, y después el find comparaba
+    // contra el externalCode crudo: " 96608" o "97963 " nunca matcheaban.
+    const codigo = externalCode.replace(/\s/g, '')
+
+    const URL = `https://api.tiendanube.com/v1/1705915/orders?q=${codigo}`
     const response = await fetch(URL, {
       method: 'GET',
       headers: {
@@ -66,11 +70,9 @@ const processOrder = async (order, token, updatedOrders) => {
     }
 
     const orders = await response.json()
-    
+
     // Buscar específicamente la orden que coincida con el number
-    const orderData = orders.find(order => 
-      order.number.toString() === externalCode.toString()
-    )
+    const orderData = orders.find(order => order.number.toString() === codigo)
 
     if (!orderData) {
       console.log(`No se encontró orden en TN con number = ${externalCode}`)
@@ -96,24 +98,21 @@ const processOrder = async (order, token, updatedOrders) => {
     const orderActions = []
 
     if (statusName === 'En Depósito' && orderData.shipping_status === 'unpacked') {
-      await markAsPacked(orderData.id)
-      orderActions.push('empaquetada')
+      if (await markAsPacked(orderData.id)) orderActions.push('empaquetada')
     }
 
     if (statusName === 'Entregado') {
       if (orderData.shipping_status === 'unpacked') {
-        await markAsPacked(orderData.id)
-        await markAsDelivered(orderData.id)
-        orderActions.push('empaquetada y entregada')
+        if (await markAsPacked(orderData.id) && await markAsDelivered(orderData.id)) {
+          orderActions.push('empaquetada y entregada')
+        }
       }
       else if (orderData.shipping_status === 'unshipped') {
-        await markAsDelivered(orderData.id)
-        orderActions.push('entregada')
+        if (await markAsDelivered(orderData.id)) orderActions.push('entregada')
       }
-      
-      if ((orderData.shipping_status === 'unpacked' || orderData.shipping_status === 'unshipped' || (orderData.shipping_status === 'delivered' || orderData.shipping_status === 'shipped')) && orderData.payment_status === 'pending') {
-        await markAsPaid(orderData.id, orderData.total, new Date().toISOString())
-        orderActions.push('pagada')
+
+      if (orderData.payment_status === 'pending') {
+        if (await markAsPaid(orderData.id)) orderActions.push('pagada')
       }
     }
 
@@ -134,19 +133,26 @@ const processOrder = async (order, token, updatedOrders) => {
 
 export const salesCo = async (token) => {
   try {
+    // Ventana de 90 días: from/to filtran por fecha de creación, y el p99 desde
+    // que se crea la orden hasta que se entrega es de 61 días. Cubre ~99,5% de
+    // las entregas con ~1050 órdenes, muy por debajo del tope de 5000 del
+    // endpoint. Con un año eran 7246 y la API devolvía solo las 5000 más
+    // nuevas, perdiendo los primeros cuatro meses en silencio.
+    const DIAS_VENTANA = 90
+
+    const formatDate = (date) =>
+      `${String(date.getMonth() + 1).padStart(2, '0')}/${String(date.getDate()).padStart(2, '0')}/${date.getFullYear()}`
+
     const today = new Date()
-    const oneYearAgo = new Date(today)
-    oneYearAgo.setFullYear(today.getFullYear() - 1)
-    const twoYearsAgo = new Date(today)
-    twoYearsAgo.setFullYear(today.getFullYear() - 2)
-    
+    const desde = new Date(today)
+    desde.setDate(today.getDate() - DIAS_VENTANA)
 
-    const formattedToday = `${String(today.getMonth() + 1).padStart(2, '0')}/${String(today.getDate()).padStart(2, '0')}/${today.getFullYear()}`
-    const formattedOneYearAgo = `${String(oneYearAgo.getMonth() + 1).padStart(2, '0')}/${String(oneYearAgo.getDate()).padStart(2, '0')}/${oneYearAgo.getFullYear()}`
+    const formattedToday = formatDate(today)
+    const formattedDesde = formatDate(desde)
 
-    log(`Consultando órdenes desde ${formattedOneYearAgo} hasta ${formattedToday}`)
-    
-    const URL = `https://api.copagopos.com/externalOrder/5000/0?from=${formattedOneYearAgo}&to=${formattedToday}`
+    log(`Consultando órdenes desde ${formattedDesde} hasta ${formattedToday} (${DIAS_VENTANA} días)`)
+
+    const URL = `https://api.copagopos.com/externalOrder/5000/0?from=${formattedDesde}&to=${formattedToday}`
 
     const response = await fetch(URL, {
       method: 'GET',
@@ -209,69 +215,48 @@ export const salesCo = async (token) => {
   }
 }
 
-const markAsPacked = async (id) => {
-  const URL_PACK = `https://api.tiendanube.com/v1/1705915/orders/${id}/pack`
-  const headers = {
-    'Content-Type': 'application/json',
-    Authentication: AUTH_TIENDANUBE,
-    'User-Agent': 'En Palabras (enpalabrass@gmail.com)',
-  }
-
-  await fetch(URL_PACK, {
-    method: 'POST',
-    headers,
-  })
+const TN_HEADERS = {
+  'Content-Type': 'application/json',
+  Authentication: AUTH_TIENDANUBE,
+  'User-Agent': 'En Palabras (enpalabrass@gmail.com)',
 }
 
-const markAsDelivered = async (id) => {
-  const URL_DELIVER = `https://api.tiendanube.com/v1/1705915/orders/${id}/fulfill`
-  const headers = {
-    'Content-Type': 'application/json',
-    Authentication: AUTH_TIENDANUBE,
-    'User-Agent': 'En Palabras (enpalabrass@gmail.com)',
-  }
+// Devuelve true solo si TN aceptó la escritura. Antes ninguna de estas
+// funciones miraba la respuesta, así que el script reportaba en verde
+// acciones que nunca ocurrieron.
+const tnWrite = async (accion, id, url, method, body) => {
+  try {
+    const response = await fetch(url, {
+      method,
+      headers: TN_HEADERS,
+      body: body === undefined ? undefined : JSON.stringify(body),
+    })
 
-  await fetch(URL_DELIVER, {
-    method: 'POST',
-    headers,
-    body: JSON.stringify({
-      shipping_tracking_number: 'NO_TRACK_NUMBER',
-      shipping_tracking_url: `https://www.enpalabras.com.ar/`,
-      notify_customer: false,
-    }),
-  })
+    if (!response.ok) {
+      log(`Fallo ${accion} en orden ${id}: ${response.status} ${await response.text()}`, 'error')
+      return false
+    }
+    return true
+  } catch (error) {
+    log(`Error de red en ${accion} para la orden ${id}: ${error.message}`, 'error')
+    return false
+  }
 }
 
-const markAsPaid = async (id, value, date) => {
-  const datePaid = new Date(date).toISOString()
+const markAsPacked = (id) =>
+  tnWrite('empaquetado', id, `https://api.tiendanube.com/v1/1705915/orders/${id}/pack`, 'POST')
 
-  const URL_PAID = `https://api.tiendanube.com/v1/1705915/orders/${id}/transactions`
-
-  const headers = {
-    'Content-Type': 'application/json',
-    Authentication: AUTH_TIENDANUBE,
-    'User-Agent': 'En Palabras (enpalabrass@gmail.com)',
-  }
-
-  const body = {
-    payment_provider_id: '7bb85609-5d0f-4a41-bb45-b12ae22697fd',
-    payment_method: {
-      type: 'cash',
-    },
-    first_event: {
-      amount: {
-        value: `${value}`,
-        currency: 'ARS',
-      },
-      type: 'sale',
-      status: 'success',
-      happened_at: datePaid,
-    },
-  }
-
-  await fetch(URL_PAID, {
-    method: 'POST',
-    headers,
-    body: JSON.stringify(body),
+const markAsDelivered = (id) =>
+  tnWrite('entrega', id, `https://api.tiendanube.com/v1/1705915/orders/${id}/fulfill`, 'POST', {
+    shipping_tracking_number: 'NO_TRACK_NUMBER',
+    shipping_tracking_url: `https://www.enpalabras.com.ar/`,
+    notify_customer: false,
   })
-}
+
+// PUT /orders/{id} con status "paid". El endpoint de transactions NO sirve
+// acá: es exclusivo de payment apps y no liquida órdenes con gateway offline
+// (verificado — creaba la transacción y la orden seguía impaga).
+const markAsPaid = (id) =>
+  tnWrite('pago', id, `https://api.tiendanube.com/v1/1705915/orders/${id}`, 'PUT', {
+    status: 'paid',
+  })
