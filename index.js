@@ -7,5 +7,7 @@ const main = async () => {
   await salesCo(token)
 }
 
-main()
+main().catch(() => {
+  process.exitCode = 1
+})
 

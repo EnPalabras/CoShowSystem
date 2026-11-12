@@ -9,6 +9,8 @@ const COSHOWROOM_EMAIL = process.env.COSHOWROOM_EMAIL
 const COSHOWROOM_PASSWORD = process.env.COSHOWROOM_PASSWORD
 const AUTH_TIENDANUBE = process.env.AUTH_TIENDANUBE
 
+let tnUnauthorized = false
+
 const log = (message, type = 'info') => {
   const timestamp = new Date().toISOString()
   console.log(`[${timestamp}] ${type.toUpperCase()}: ${message}`)
@@ -65,6 +67,7 @@ const processOrder = async (order, token, updatedOrders) => {
     })
 
     if (!response.ok) {
+      if (response.status === 401) tnUnauthorized = true
       console.log(`Error consultando orden ${externalCode}: ${response.status}`)
       return
     }
@@ -183,6 +186,9 @@ export const salesCo = async (token) => {
     
     for (const chunk of chunks) {
       await Promise.all(chunk.map(order => processOrder(order, token, updatedOrders)))
+      if (tnUnauthorized) {
+        throw new Error('Tiendanube rechazó AUTH_TIENDANUBE (401): hay que actualizar el secret')
+      }
     }
 
     // Mostrar resumen de órdenes actualizadas
@@ -233,6 +239,7 @@ const tnWrite = async (accion, id, url, method, body) => {
     })
 
     if (!response.ok) {
+      if (response.status === 401) tnUnauthorized = true
       log(`Fallo ${accion} en orden ${id}: ${response.status} ${await response.text()}`, 'error')
       return false
     }
