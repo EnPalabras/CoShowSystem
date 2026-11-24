@@ -4,10 +4,20 @@ import path from 'path'
 
 dotenv.config()
 
-const COSHOWROOM_LOGINURL = process.env.COSHOWROOM_LOGINURL
 const COSHOWROOM_EMAIL = process.env.COSHOWROOM_EMAIL
 const COSHOWROOM_PASSWORD = process.env.COSHOWROOM_PASSWORD
 const AUTH_TIENDANUBE = process.env.AUTH_TIENDANUBE
+
+// Retail Studio (retailstudio.dev) reemplazó a Copago el 22/11/2026. Es un Supabase: la URL y la
+// anon key son las públicas del front, y con el usuario de la marca el RLS sólo deja ver lo nuestro.
+const RETAIL_STUDIO_URL = 'https://toswmxhhyllzornqnago.supabase.co'
+const RETAIL_STUDIO_ANON_KEY =
+  'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRvc3dteGhoeWxsem9ybnFuYWdvIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTUzODY2NzUsImV4cCI6MjExMDk2MjY3NX0.bpaF05rZkBJrV03jsZU00PCAOK7hjU4kxN0KL0p_lP8'
+
+const ESTADOS = {
+  en_deposito: 'En Depósito',
+  entregado: 'Entregado',
+}
 
 let tnUnauthorized = false
 
@@ -18,10 +28,11 @@ const log = (message, type = 'info') => {
 
 export const loginCo = async () => {
   try {
-    const response = await fetch(COSHOWROOM_LOGINURL, {
+    const response = await fetch(`${RETAIL_STUDIO_URL}/auth/v1/token?grant_type=password`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
+        apikey: RETAIL_STUDIO_ANON_KEY,
       },
       body: JSON.stringify({
         email: COSHOWROOM_EMAIL,
@@ -30,15 +41,39 @@ export const loginCo = async () => {
     })
 
     if (!response.ok) {
-      throw new Error(`Error en login: ${response.status} ${response.statusText}`)
+      throw new Error(`Error en login: ${response.status} ${await response.text()}`)
     }
 
     const data = await response.json()
-    log('Login exitoso en CoShowroom')
-    return data.token
+    log('Login exitoso en Retail Studio')
+    return data.access_token
   } catch (error) {
     log(`Error en login: ${error.message}`, 'error')
     throw error
+  }
+}
+
+const PAGE_SIZE = 1000
+
+const fetchPedidos = async (token, desde) => {
+  const pedidos = []
+  for (let offset = 0; ; offset += PAGE_SIZE) {
+    const params = new URLSearchParams({
+      select: 'id,codigo_externo,estado,cliente_nombre,puntos_venta!pedidos_punto_venta_id_fkey(nombre)',
+      created_at: `gte.${desde.toISOString()}`,
+      order: 'id.asc',
+      limit: String(PAGE_SIZE),
+      offset: String(offset),
+    })
+    const response = await fetch(`${RETAIL_STUDIO_URL}/rest/v1/pedidos?${params}`, {
+      headers: { apikey: RETAIL_STUDIO_ANON_KEY, Authorization: `Bearer ${token}` },
+    })
+    if (!response.ok) {
+      throw new Error(`Error obteniendo pedidos: ${response.status} ${await response.text()}`)
+    }
+    const page = await response.json()
+    pedidos.push(...page)
+    if (page.length < PAGE_SIZE) return pedidos
   }
 }
 
@@ -143,34 +178,19 @@ export const salesCo = async (token) => {
     // nuevas, perdiendo los primeros cuatro meses en silencio.
     const DIAS_VENTANA = 90
 
-    const formatDate = (date) =>
-      `${String(date.getMonth() + 1).padStart(2, '0')}/${String(date.getDate()).padStart(2, '0')}/${date.getFullYear()}`
+    const desde = new Date()
+    desde.setDate(desde.getDate() - DIAS_VENTANA)
 
-    const today = new Date()
-    const desde = new Date(today)
-    desde.setDate(today.getDate() - DIAS_VENTANA)
+    log(`Consultando pedidos desde ${desde.toISOString().slice(0, 10)} (${DIAS_VENTANA} días)`)
 
-    const formattedToday = formatDate(today)
-    const formattedDesde = formatDate(desde)
+    const externalOrder = (await fetchPedidos(token, desde)).map((pedido) => ({
+      clientName: pedido.cliente_nombre ?? '',
+      statusName: ESTADOS[pedido.estado] ?? pedido.estado,
+      externalCode: pedido.codigo_externo ?? '',
+      store: pedido.puntos_venta?.nombre ?? '',
+    }))
+    const data = { externalOrder }
 
-    log(`Consultando órdenes desde ${formattedDesde} hasta ${formattedToday} (${DIAS_VENTANA} días)`)
-
-    const URL = `https://api.copagopos.com/externalOrder/5000/0?from=${formattedDesde}&to=${formattedToday}`
-
-    const response = await fetch(URL, {
-      method: 'GET',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: token,
-      },
-    })
-
-    if (!response.ok) {
-      throw new Error(`Error obteniendo órdenes: ${response.status} ${response.statusText}`)
-    }
-
-    const data = await response.json()
-    
     log(`Total de órdenes obtenidas: ${data.externalOrder.length}`)
     
     // Array para guardar las órdenes actualizadas

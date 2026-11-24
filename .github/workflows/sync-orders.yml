@@ -23,7 +23,6 @@ jobs:
 
       - name: Run sync script
         env:
-          COSHOWROOM_LOGINURL: ${{ secrets.COSHOWROOM_LOGINURL }}
           COSHOWROOM_EMAIL: ${{ secrets.COSHOWROOM_EMAIL }}
           COSHOWROOM_PASSWORD: ${{ secrets.COSHOWROOM_PASSWORD }}
           AUTH_TIENDANUBE: ${{ secrets.AUTH_TIENDANUBE }}

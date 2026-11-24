@@ -76,7 +76,7 @@ Crear un archivo `.env` en la raíz del proyecto con las siguientes variables:
 
 ```env
 # CoShowroom API
-COSHOWROOM_LOGINURL=https://api.copagopos.com/admin/login
+
 COSHOWROOM_EMAIL=tu_email@ejemplo.com
 COSHOWROOM_PASSWORD=tu_password_seguro
 
